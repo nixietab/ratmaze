@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rat</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #111; 
+    color: #fff; 
+  }
+  .maze-row {
+    display: flex;
+  }
+  .maze-square {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #333; 
+    box-sizing: border-box;
+    position: relative;
+  }
+  .wall {
+    background-image: url('wall.png'); 
+  }
+  .path {
+    background-image: url('background.png'); 
+  }
+  .start {
+    background-image: url('start.png'); 
+  }
+  .end {
+    background-image: url('end.png'); 
+  }
+  .smart-tile {
+    background-image: url('smart.png'); 
+  }
+</style>
+</head>
+<body>
+<div id="maze"></div>
+<script>
+  const maze = document.getElementById('maze');
+  const mazeSize = 15; 
+  let startRow, startCol, endRow, endCol;
+  let smartTileRow, smartTileCol;
+  let smartTileDirection = 'up'; 
+
+  let grid = [];
+
+  function initializeGrid() {
+    grid = [];
+    for (let i = 0; i < mazeSize; i++) {
+      grid[i] = [];
+      for (let j = 0; j < mazeSize; j++) {
+        grid[i][j] = {
+          wall: true,
+          visited: false
+        };
+      }
+    }
+  }
+
+  function createMaze(row, col) {
+    grid[row][col].visited = true;
+    grid[row][col].wall = false;
+
+    const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    directions.sort(() => Math.random() - 0.5); 
+
+    for (let [dr, dc] of directions) {
+      const newRow = row + dr * 2;
+      const newCol = col + dc * 2;
+
+      if (newRow >= 0 && newRow < mazeSize && newCol >= 0 && newCol < mazeSize && !grid[newRow][newCol].visited) {
+        grid[row + dr][col + dc].wall = false;
+        createMaze(newRow, newCol);
+      }
+    }
+  }
+
+  function connectStartEnd() {
+    const path = findPath(startRow, startCol, endRow, endCol);
+    for (let i = 0; i < path.length; i++) {
+      const [row, col] = path[i];
+      grid[row][col].wall = false;
+    }
+  }
+
+  function findPath(startRow, startCol, endRow, endCol) {
+    const openList = [{ row: startRow, col: startCol, f: 0, g: 0 }];
+    const closedList = [];
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+    while (openList.length > 0) {
+      openList.sort((a, b) => a.f - b.f);
+      const current = openList.shift();
+      const { row, col } = current;
+
+      if (row === endRow && col === endCol) {
+        const path = [];
+        let currentCell = current;
+        while (currentCell) {
+          path.unshift([currentCell.row, currentCell.col]);
+          currentCell = currentCell.parent;
+        }
+        return path;
+      }
+
+      closedList.push(current);
+
+      for (let [dr, dc] of directions) {
+        const newRow = row + dr;
+        const newCol = col + dc;
+
+        if (newRow >= 0 && newRow < mazeSize && newCol >= 0 && newCol < mazeSize && !grid[newRow][newCol].wall) {
+          const g = current.g + 1;
+          const h = Math.abs(newRow - endRow) + Math.abs(newCol - endCol);
+          const f = g + h;
+
+          const inOpenList = openList.some(cell => cell.row === newRow && cell.col === newCol);
+          const inClosedList = closedList.some(cell => cell.row === newRow && cell.col === newCol);
+
+          if (!inClosedList || g < current.g) {
+            const cell = { row: newRow, col: newCol, f, g, parent: current };
+            if (!inOpenList) openList.push(cell);
+          }
+        }
+      }
+    }
+
+    return [];
+  }
+
+  function generateMaze() {
+    initializeGrid();
+    createMaze(1, 1); 
+
+    do {
+      startRow = Math.floor(Math.random() * (mazeSize - 2)) + 1;
+      startCol = Math.floor(Math.random() * (mazeSize - 2)) + 1;
+      endRow = Math.floor(Math.random() * (mazeSize - 2)) + 1;
+      endCol = Math.floor(Math.random() * (mazeSize - 2)) + 1;
+    } while ((startRow === endRow && startCol === endCol) || (startRow % 2 === 0 && startCol % 2 === 0) || (endRow % 2 === 0 && endCol % 2 === 0));
+
+    connectStartEnd();
+
+    for (let i = 0; i < mazeSize; i++) {
+      const row = document.createElement('div');
+      row.classList.add('maze-row');
+      for (let j = 0; j < mazeSize; j++) {
+        const square = document.createElement('div');
+        square.classList.add('maze-square');
+        square.id = `square_${i}_${j}`; 
+        if (grid[i][j].wall) {
+          square.classList.add('wall');
+        } else {
+          square.classList.add('path');
+        }
+        row.appendChild(square);
+      }
+      maze.appendChild(row);
+    }
+
+    document.getElementById(`square_${startRow}_${startCol}`).classList.add('start');
+
+    document.getElementById(`square_${endRow}_${endCol}`).classList.add('end');
+
+    smartTileRow = startRow;
+    smartTileCol = startCol;
+    document.getElementById(`square_${smartTileRow}_${smartTileCol}`).classList.add('smart-tile');
+
+    moveSmartTileAutomatically();
+  }
+
+  generateMaze();
+
+  function moveSmartTileAutomatically() {
+    const path = findPath(smartTileRow, smartTileCol, endRow, endCol);
+    if (path.length > 1) {
+      const [nextRow, nextCol] = path[1];
+      const direction = calculateDirection(smartTileRow, smartTileCol, nextRow, nextCol);
+      moveSmartTile(nextRow, nextCol, direction);
+      setTimeout(moveSmartTileAutomatically, 200); 
+    } else {
+
+      restartGame();
+    }
+  }
+
+  function moveSmartTile(row, col, direction) {
+    document.getElementById(`square_${smartTileRow}_${smartTileCol}`).classList.remove('smart-tile');
+    smartTileRow = row;
+    smartTileCol = col;
+    document.getElementById(`square_${smartTileRow}_${smartTileCol}`).classList.add('smart-tile');
+    document.getElementById(`square_${smartTileRow}_${smartTileCol}`).style.transform = `rotate(${direction}deg)`;
+  }
+
+  function restartGame() {
+
+    maze.innerHTML = '';
+
+    generateMaze();
+  }
+
+  function calculateDirection(currRow, currCol, nextRow, nextCol) {
+    if (currRow < nextRow) {
+      return 0; 
+    } else if (currRow > nextRow) {
+      return 180; 
+    } else if (currCol < nextCol) {
+      return -90; 
+    } else {
+      return 90; 
+    }
+  }
+</script>
+</body>
+</html>
